@@ -1,0 +1,16 @@
+To Run
+uvicorn backend.app:app --host 0.0.0.0 --port 8000 --ssl-keyfile key.pem --ssl-certfile cert.pem
+On browser
+https://yourpcip:8000
+
+pkgs
+Python 3.10 or 3.11
+python --version
+pip install fastapi
+pip install uvicorn
+pip install torch
+pip install numpy
+pip install pydantic
+pip install pyopenssl
+pip install mediapipe
+pip install opencv-python

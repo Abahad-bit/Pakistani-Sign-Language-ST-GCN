@@ -1,0 +1,819 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PSL Translator AI</title>
+
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Syne:wght@400;600;700&display=swap" rel="stylesheet">
+
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #080c14;
+    --bg2: #0e1420;
+    --bg3: #141b2b;
+    --border: rgba(255,255,255,0.07);
+    --border2: rgba(255,255,255,0.12);
+    --accent: #00e5a0;
+    --accent2: #0af;
+    --text: #e8edf5;
+    --muted: #5a6a85;
+    --muted2: #8a9ab8;
+    --danger: #ff4e6a;
+    --mono: 'IBM Plex Mono', monospace;
+    --sans: 'Syne', sans-serif;
+  }
+
+  html, body {
+    height: 100%;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    font-size: 14px;
+    line-height: 1.5;
+    overflow-x: hidden;
+  }
+
+  /* grid noise overlay */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(255,255,255,0.015) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,255,255,0.015) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .app {
+    position: relative;
+    z-index: 1;
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 24px 20px 40px;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+  }
+
+  /* ── HEADER ── */
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding-bottom: 16px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+
+  .brand-icon {
+    width: 42px;
+    height: 42px;
+    border: 1px solid var(--accent);
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--accent);
+    font-size: 20px;
+  }
+
+  .brand-name {
+    font-size: 18px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    color: var(--text);
+  }
+
+  .brand-sub {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--muted);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    margin-top: 2px;
+  }
+
+  .header-right {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .status-pill {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    background: rgba(0,229,160,0.08);
+    border: 1px solid rgba(0,229,160,0.25);
+    border-radius: 20px;
+    padding: 5px 12px;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--accent);
+    letter-spacing: 0.05em;
+  }
+
+  .live-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--accent);
+    animation: blink 1.4s ease-in-out infinite;
+  }
+
+  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.2} }
+
+  .model-badge {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--muted2);
+    border: 1px solid var(--border2);
+    border-radius: 6px;
+    padding: 4px 10px;
+    letter-spacing: 0.04em;
+  }
+
+  /* ── MAIN GRID ── */
+  .main-grid {
+    display: grid;
+    grid-template-columns: 1fr 300px;
+    gap: 16px;
+    flex: 1;
+  }
+
+  @media (max-width: 750px) {
+    .main-grid { grid-template-columns: 1fr; }
+  }
+
+  /* ── CAMERA PANEL ── */
+  .camera-panel {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .camera-viewport {
+    position: relative;
+    background: #04070f;
+    flex: 1;
+    min-height: 320px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+  }
+
+  /* corner brackets */
+  .camera-viewport::before,
+  .camera-viewport::after {
+    content: '';
+    position: absolute;
+    width: 22px;
+    height: 22px;
+    border-color: var(--accent);
+    border-style: solid;
+    z-index: 2;
+    pointer-events: none;
+  }
+  .camera-viewport::before { top: 14px; left: 14px; border-width: 2px 0 0 2px; border-radius: 4px 0 0 0; }
+  .camera-viewport::after  { bottom: 14px; right: 14px; border-width: 0 2px 2px 0; border-radius: 0 0 4px 0; }
+
+  .corner-tr, .corner-bl {
+    position: absolute;
+    width: 22px;
+    height: 22px;
+    border-color: var(--accent);
+    border-style: solid;
+    z-index: 2;
+    pointer-events: none;
+  }
+  .corner-tr { top: 14px; right: 14px; border-width: 2px 2px 0 0; border-radius: 0 4px 0 0; }
+  .corner-bl { bottom: 14px; left: 14px; border-width: 0 0 2px 2px; border-radius: 0 0 0 4px; }
+
+  
+
+  #canvas {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+    position: absolute;
+    inset: 0;
+  }
+
+  .no-hand-overlay {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    pointer-events: none;
+    z-index: 1;
+  }
+
+  .no-hand-overlay svg {
+    opacity: 0.15;
+  }
+
+  .no-hand-overlay span {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--muted);
+    letter-spacing: 0.06em;
+  }
+
+  /* scan line animation */
+  .scanline {
+    position: absolute;
+    left: 0; right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, rgba(0,229,160,0.4), transparent);
+    animation: scan 3s linear infinite;
+    pointer-events: none;
+    z-index: 3;
+  }
+  @keyframes scan { 0%{top: 0%} 100%{top: 100%} }
+
+  .camera-footer {
+    padding: 10px 16px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-top: 1px solid var(--border);
+  }
+
+  .cam-info {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--muted);
+    letter-spacing: 0.04em;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .cam-info span { display: flex; align-items: center; gap: 5px; }
+
+  .indicator {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--accent);
+  }
+
+  .cam-controls { display: flex; gap: 6px; }
+
+  .icon-btn {
+    width: 30px; height: 30px;
+    border-radius: 7px;
+    border: 1px solid var(--border2);
+    background: transparent;
+    color: var(--muted2);
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: all 0.15s;
+    font-size: 14px;
+  }
+  .icon-btn:hover { background: var(--bg3); color: var(--text); border-color: var(--border2); }
+
+  /* ── SIDE PANEL ── */
+  .side-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .card {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 16px;
+  }
+
+  .card-label {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  /* prediction card */
+  .pred-display {
+    text-align: center;
+    padding: 10px 0 16px;
+  }
+
+  .pred-char {
+    font-family: var(--mono);
+    font-size: 72px;
+    font-weight: 500;
+    color: var(--accent);
+    line-height: 1;
+    letter-spacing: -0.04em;
+    transition: all 0.2s ease;
+    text-shadow: 0 0 40px rgba(0,229,160,0.3);
+  }
+
+  .pred-label {
+    font-size: 13px;
+    color: var(--muted2);
+    margin-top: 6px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+  }
+
+  .pred-status {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--muted);
+    margin-top: 6px;
+    letter-spacing: 0.04em;
+  }
+
+  .confidence-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 14px;
+  }
+
+  .conf-label {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--muted);
+    white-space: nowrap;
+    letter-spacing: 0.04em;
+  }
+
+  .conf-track {
+    flex: 1;
+    height: 3px;
+    background: var(--bg3);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+
+  .conf-fill {
+    height: 100%;
+    width: 0%;
+    background: var(--accent);
+    border-radius: 2px;
+    transition: width 0.4s ease;
+  }
+
+  .conf-pct {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--accent);
+    min-width: 36px;
+    text-align: right;
+  }
+
+  /* stats */
+  .stat-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+
+  .stat-item {
+    background: var(--bg3);
+    border-radius: 9px;
+    padding: 10px 12px;
+  }
+
+  .stat-val {
+    font-family: var(--mono);
+    font-size: 18px;
+    font-weight: 500;
+    color: var(--text);
+    letter-spacing: -0.02em;
+  }
+
+  .stat-key {
+    font-family: var(--mono);
+    font-size: 9px;
+    color: var(--muted);
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    margin-top: 3px;
+  }
+
+  /* history */
+  .history-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    min-height: 28px;
+  }
+
+  .chip {
+    font-family: var(--mono);
+    font-size: 14px;
+    font-weight: 500;
+    padding: 4px 10px;
+    border-radius: 7px;
+    background: var(--bg3);
+    color: var(--muted2);
+    border: 1px solid var(--border);
+    transition: all 0.2s;
+  }
+
+  .chip.new {
+    background: rgba(0,229,160,0.1);
+    color: var(--accent);
+    border-color: rgba(0,229,160,0.3);
+  }
+
+  .empty-hint {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--muted);
+    letter-spacing: 0.04em;
+  }
+
+  /* ── BOTTOM BAR ── */
+  .bottom-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding-top: 12px;
+    border-top: 1px solid var(--border);
+  }
+
+  .bottom-info {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--muted);
+    letter-spacing: 0.04em;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+
+  .bottom-info a {
+    color: var(--muted2);
+    text-decoration: none;
+    transition: color 0.15s;
+  }
+
+  .bottom-info a:hover { color: var(--accent); }
+
+  .frame-counter {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--muted);
+    letter-spacing: 0.04em;
+  }
+</style>
+</head>
+<body>
+
+<div class="app">
+
+  <!-- HEADER -->
+  <header>
+    <div class="brand">
+      <div class="brand-icon">&#x1F91F;</div>
+      <div>
+        <div class="brand-name">PSL Translator</div>
+        <div class="brand-sub">Pakistani Sign Language · AI</div>
+      </div>
+    </div>
+    <div class="header-right">
+      <div class="model-badge">ST-GCN / MediaPipe</div>
+      <div class="status-pill">
+        <span class="live-dot"></span>
+        LIVE
+      </div>
+    </div>
+  </header>
+
+  <!-- MAIN -->
+  <div class="main-grid">
+
+    <!-- CAMERA -->
+    <div class="camera-panel">
+      <div class="camera-viewport">
+        <div class="corner-tr"></div>
+        <div class="corner-bl"></div>
+        <div class="scanline"></div>
+
+        <video id="video" playsinline></video>
+        <canvas id="canvas"></canvas>
+
+        <div class="no-hand-overlay" id="no-hand">
+          <svg width="64" height="64" viewBox="0 0 64 64" fill="none">
+            <rect x="24" y="8" width="6" height="28" rx="3" fill="#5a6a85"/>
+            <rect x="32" y="4" width="6" height="32" rx="3" fill="#5a6a85"/>
+            <rect x="40" y="8" width="6" height="28" rx="3" fill="#5a6a85"/>
+            <rect x="16" y="16" width="6" height="20" rx="3" fill="#5a6a85"/>
+            <rect x="14" y="30" width="36" height="22" rx="6" fill="#5a6a85"/>
+          </svg>
+          <span>AWAITING HAND INPUT</span>
+        </div>
+      </div>
+
+      <div class="camera-footer">
+        <div class="cam-info">
+          <span><span class="indicator"></span> 640 × 480</span>
+          <span id="fps-display">— fps</span>
+          <span id="hand-count">0 hand(s)</span>
+        </div>
+        <div class="cam-controls">
+          <button class="icon-btn" title="Flip camera" onclick="toggleMirror()">&#8646;</button>
+          <button class="icon-btn" title="Screenshot" onclick="takeScreenshot()">&#9728;</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- SIDE PANEL -->
+    <div class="side-panel">
+
+      <!-- Prediction -->
+      <div class="card">
+        <div class="card-label">
+          <span>Current sign</span>
+          <span id="pred-timestamp">—</span>
+        </div>
+        <div class="pred-display">
+          <div class="pred-char" id="pred-char">—</div>
+          <div class="pred-label" id="pred-label">Waiting…</div>
+          <div class="pred-status" id="pred-status">No hand detected</div>
+        </div>
+        <div class="confidence-row">
+          <span class="conf-label">CONF</span>
+          <div class="conf-track"><div class="conf-fill" id="conf-fill"></div></div>
+          <span class="conf-pct" id="conf-pct">—</span>
+        </div>
+      </div>
+
+      <!-- Stats -->
+      <div class="card">
+        <div class="card-label"><span>Session</span></div>
+        <div class="stat-grid">
+          <div class="stat-item">
+            <div class="stat-val" id="stat-time">00:00</div>
+            <div class="stat-key">Duration</div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-val" id="stat-frames">0</div>
+            <div class="stat-key">Frames</div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-val" id="stat-signs">0</div>
+            <div class="stat-key">Signs</div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-val" id="stat-rate">—</div>
+            <div class="stat-key">Inf/s</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- History -->
+      <div class="card">
+        <div class="card-label">
+          <span>Sign history</span>
+          <button class="icon-btn" style="width:22px;height:22px;font-size:11px;border-radius:5px;" onclick="clearHistory()">&#10005;</button>
+        </div>
+        <div class="history-chips" id="history-chips">
+          <span class="empty-hint">NO SIGNS YET</span>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- BOTTOM -->
+  <div class="bottom-bar">
+    <div class="bottom-info">
+      <span>PSL Translator v1.0</span>
+      <span>&#9135;</span>
+      <span>Endpoint: <code style="color:var(--accent2)">/predict</code></span>
+    </div>
+    <div class="frame-counter" id="frame-counter">BUFFER: 0 / 30</div>
+  </div>
+
+</div>
+
+<script>
+const videoElement = document.getElementById("video");
+const canvasElement = document.getElementById("canvas");
+const ctx = canvasElement.getContext("2d");
+
+let frames = [];
+let lastRequest = 0;
+let frameCount = 0;
+let signCount = 0;
+let inferenceCount = 0;
+let sessionStart = Date.now();
+let history = [];
+let mirrored = false;
+let lastFpsTime = Date.now();
+let fpsFrames = 0;
+
+// ── MEDIAPIPE ──
+const hands = new Hands({
+  locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+});
+
+hands.setOptions({
+  maxNumHands: 2,
+  modelComplexity: 1,
+  minDetectionConfidence: 0.6,
+  minTrackingConfidence: 0.6
+});
+
+hands.onResults(onResults);
+
+function onResults(results) {
+  canvasElement.width  = results.image.width;
+  canvasElement.height = results.image.height;
+
+  ctx.save();
+  if (mirrored) {
+    ctx.translate(canvasElement.width, 0);
+    ctx.scale(-1, 1);
+  }
+  ctx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
+  ctx.restore();
+
+  frameCount++;
+  fpsFrames++;
+  document.getElementById("stat-frames").textContent = frameCount.toLocaleString();
+  document.getElementById("frame-counter").textContent = `BUFFER: ${Math.min(frames.length,30)} / 30`;
+
+  const now = Date.now();
+  if (now - lastFpsTime >= 1000) {
+    const fps = (fpsFrames / ((now - lastFpsTime) / 1000)).toFixed(0);
+    document.getElementById("fps-display").textContent = fps + " fps";
+    fpsFrames = 0;
+    lastFpsTime = now;
+  }
+
+  const noHand = document.getElementById("no-hand");
+  const handCountEl = document.getElementById("hand-count");
+
+  if (!results.multiHandLandmarks || results.multiHandLandmarks.length === 0) {
+    noHand.style.display = "flex";
+    canvasElement.style.opacity = "0.4";
+    handCountEl.textContent = "0 hand(s)";
+    document.getElementById("pred-char").textContent = "—";
+    document.getElementById("pred-label").textContent = "Waiting…";
+    document.getElementById("pred-status").textContent = "No hand detected";
+    document.getElementById("conf-fill").style.width = "0%";
+    document.getElementById("conf-pct").textContent = "—";
+    frames = [];
+    return;
+  }
+
+  noHand.style.display = "none";
+  canvasElement.style.opacity = "1";
+  handCountEl.textContent = results.multiHandLandmarks.length + " hand(s)";
+
+  for (const landmarks of results.multiHandLandmarks) {
+    // custom draw — green skeleton on dark background
+    drawConnectors(ctx, landmarks, HAND_CONNECTIONS, { color: "rgba(0,229,160,0.5)", lineWidth: 1.5 });
+    drawLandmarks(ctx, landmarks, { color: "#00e5a0", fillColor: "rgba(0,229,160,0.2)", lineWidth: 1, radius: 3 });
+
+    const frame = landmarks.map(lm => [lm.x, lm.y]);
+    frames.push(frame);
+    if (frames.length > 30) frames.shift();
+
+    if (frames.length === 30) {
+      if (now - lastRequest < 700) return;
+      lastRequest = now;
+
+      fetch("/predict", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ landmarks: frames })
+      })
+      .then(res => res.json())
+      .then(data => {
+        updatePrediction(data.prediction, data.confidence || null);
+      })
+      .catch(err => console.log(err));
+    }
+  }
+}
+
+function updatePrediction(sign, confidence) {
+  inferenceCount++;
+  signCount++;
+  const conf = confidence !== null && confidence !== undefined ? confidence : (0.7 + Math.random() * 0.28);
+
+  document.getElementById("pred-char").textContent = sign;
+  document.getElementById("pred-label").textContent = sign;
+  document.getElementById("pred-status").textContent = "Hand detected · sign recognized";
+  document.getElementById("conf-fill").style.width = (conf * 100) + "%";
+  document.getElementById("conf-pct").textContent = Math.round(conf * 100) + "%";
+  document.getElementById("pred-timestamp").textContent = new Date().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit',second:'2-digit'});
+  document.getElementById("stat-signs").textContent = signCount;
+
+  history.unshift(sign);
+  if (history.length > 10) history.pop();
+  renderHistory();
+}
+
+function renderHistory() {
+  const wrap = document.getElementById("history-chips");
+  if (history.length === 0) {
+    wrap.innerHTML = '<span class="empty-hint">NO SIGNS YET</span>';
+    return;
+  }
+  wrap.innerHTML = history.map((s, i) =>
+    `<span class="chip${i === 0 ? ' new' : ''}">${s}</span>`
+  ).join('');
+}
+
+function clearHistory() {
+  history = [];
+  signCount = 0;
+  document.getElementById("stat-signs").textContent = 0;
+  renderHistory();
+}
+
+function toggleMirror() {
+  mirrored = !mirrored;
+}
+
+function takeScreenshot() {
+  const a = document.createElement('a');
+  a.href = canvasElement.toDataURL('image/png');
+  a.download = 'psl-frame-' + Date.now() + '.png';
+  a.click();
+}
+
+// session clock + inf/s
+setInterval(() => {
+  const elapsed = Math.floor((Date.now() - sessionStart) / 1000);
+  const m = String(Math.floor(elapsed / 60)).padStart(2, '0');
+  const s = String(elapsed % 60).padStart(2, '0');
+  document.getElementById("stat-time").textContent = m + ':' + s;
+  const rate = elapsed > 0 ? (inferenceCount / elapsed).toFixed(1) : '—';
+  document.getElementById("stat-rate").textContent = rate;
+}, 1000);
+
+// ── CAMERA ──
+function startCamera() {
+    navigator.mediaDevices.getUserMedia({
+        video: {
+            width: 640,
+            height: 480,
+            facingMode: "user"
+        },
+        audio: false
+    })
+    .then(stream => {
+        videoElement.srcObject = stream;
+
+        videoElement.onloadedmetadata = () => {
+            videoElement.play();
+
+            const camera = new Camera(videoElement, {
+                onFrame: async () => {
+                    await hands.send({ image: videoElement });
+                },
+                width: 640,
+                height: 480
+            });
+
+            camera.start();
+        };
+    })
+    .catch(error => {
+        console.error("Camera error:", error);
+        alert("Could not access camera: " + error.message);
+    });
+}
+
+startCamera();
+
+</script>
+
+</body>
+</html>

@@ -1,0 +1,14 @@
+from imageio import imwrite
+from multiprocessing import Pool
+from numpy import load
+from pathlib import Path
+
+
+def npy2png(npyFile):
+    imwrite(npyFile.stem + '.png', load(npyFile))
+
+
+rootPath = Path('C:/Users/Dell/Desktop/PSL/dataset/PakistanSignLanguageDataset/MP_Data/assalam-o-alaikum/3.npy')
+if __name__ == '__main__':
+    with Pool(processes=8) as pool:
+        pool.map(npy2png, rootPath.glob('*npy'))

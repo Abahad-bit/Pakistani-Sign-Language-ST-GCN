@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>PSL Translator AI</title>
+
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
+
+<style>
+body {
+    margin: 0;
+    font-family: Arial;
+    background: #0b1220;
+    color: white;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+h1 {
+    margin: 15px;
+}
+
+.container {
+    position: relative;
+    width: 90%;
+    max-width: 700px;
+    border-radius: 16px;
+    overflow: hidden;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+}
+
+/* ONLY CANVAS SHOWS CAMERA OUTPUT */
+canvas {
+    width: 100%;
+    height: auto;
+    display: block;
+}
+
+#prediction {
+    margin-top: 20px;
+    font-size: 36px;
+    color: #00ff99;
+    font-weight: bold;
+}
+
+.badge {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    background: rgba(0,0,0,0.6);
+    padding: 6px 10px;
+    font-size: 12px;
+    border-radius: 8px;
+}
+</style>
+</head>
+
+<body>
+
+<h1>🤟 PSL Translator AI</h1>
+
+<div class="container">
+    <!-- video is HIDDEN (important fix) -->
+    <video id="video" playsinline style="display:none;"></video>
+
+    <canvas id="canvas"></canvas>
+    <div class="badge">LIVE</div>
+</div>
+
+<div id="prediction">Waiting for hand...</div>
+
+<script>
+
+const videoElement = document.getElementById("video");
+const canvasElement = document.getElementById("canvas");
+const ctx = canvasElement.getContext("2d");
+
+let frames = [];
+let lastRequest = 0;
+
+// ================= MEDIAPIPE =================
+const hands = new Hands({
+    locateFile: (file) =>
+        `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+});
+
+hands.setOptions({
+    maxNumHands: 1,
+    modelComplexity: 1,
+    minDetectionConfidence: 0.6,
+    minTrackingConfidence: 0.6
+});
+
+hands.onResults(onResults);
+
+function onResults(results) {
+
+    canvasElement.width = results.image.width;
+    canvasElement.height = results.image.height;
+
+    ctx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+
+    // ✅ THIS IS THE CAMERA IMAGE (YOU WERE MISSING THIS)
+    ctx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
+
+    if (!results.multiHandLandmarks) {
+        document.getElementById("prediction").innerText = "No hand detected";
+        frames = [];
+        return;
+    }
+
+    for (const landmarks of results.multiHandLandmarks) {
+
+        drawConnectors(ctx, landmarks, HAND_CONNECTIONS);
+        drawLandmarks(ctx, landmarks);
+
+        const frame = landmarks.map(lm => [lm.x, lm.y]);
+
+        frames.push(frame);
+        if (frames.length > 30) frames.shift();
+
+        if (frames.length === 30) {
+
+            const now = Date.now();
+            if (now - lastRequest < 700) return;
+            lastRequest = now;
+
+            fetch("/predict", {
+                method: "POST",
+                headers: {"Content-Type": "application/json"},
+                body: JSON.stringify({ landmarks: frames })
+            })
+            .then(res => res.json())
+            .then(data => {
+                document.getElementById("prediction").innerText =
+                    data.prediction;
+            })
+            .catch(err => console.log(err));
+        }
+    }
+}
+
+// ================= SINGLE CAMERA ONLY =================
+const camera = new Camera(videoElement, {
+    onFrame: async () => {
+        await hands.send({ image: videoElement });
+    },
+    width: 640,
+    height: 480
+});
+
+camera.start();
+
+</script>
+
+</body>
+</html>
