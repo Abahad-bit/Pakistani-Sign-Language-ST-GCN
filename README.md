@@ -148,6 +148,8 @@ You'll get a self-signed certificate warning the first time — accept it to rea
 - Hand tracking powered by [MediaPipe Hands](https://google.github.io/mediapipe/solutions/hands.html)
 - Dataset workflow inspired by the [Pakistan Sign Language (PSL) Dataset Toolkit](https://github.com/hmhamza/psl-dataset)
 
-## License
+## Dataset Used
 
-No license has been set for this repository yet. Consider adding one (e.g. MIT) so others know how they can use your work.
+https://www.kaggle.com/datasets/mohib123456/dynamic-word-level-pakistan-sign-language-dataset/data
+
+
